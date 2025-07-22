@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Space Station Classification Interface</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier@1.2.2/dist/knn-classifier.min.js"></script>
+    <style>
+      body {
+        background: linear-gradient(180deg, #0a0a23 0%, #1a1a3d 100%);
+        font-family: "Orbitron", sans-serif;
+        position: relative;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      .stars-background {
+        position: fixed;
+        inset: 0;
+        background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><circle cx="10" cy="10" r="1" fill="white" opacity="0.8"/><circle cx="50" cy="50" r="1.5" fill="white" opacity="0.6"/><circle cx="90" cy="90" r="1" fill="white" opacity="0.7"/><circle cx="30" cy="70" r="1.2" fill="white" opacity="0.5"/><circle cx="20" cy="40" r="1" fill="white" opacity="0.7"/><circle cx="80" cy="20" r="1.3" fill="white" opacity="0.6"/><circle cx="70" cy="60" r="1.1" fill="white" opacity="0.5"/></svg>')
+          repeat;
+        animation: twinkle 20s linear infinite;
+        z-index: -1;
+        pointer-events: none;
+      }
+
+      @keyframes twinkle {
+        0% {
+          opacity: 0.6;
+          transform: translate(0, 0);
+        }
+        50% {
+          opacity: 1;
+          transform: translate(5px, 5px);
+        }
+        100% {
+          opacity: 0.6;
+          transform: translate(0, 0);
+        }
+      }
+
+      .btn-glow {
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s ease;
+      }
+
+      .btn-glow::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(0, 212, 255, 0.4),
+          transparent
+        );
+        transition: left 0.7s;
+      }
+
+      .btn-glow:hover::before {
+        left: 100%;
+      }
+
+      .btn-glow:active {
+        transform: scale(0.95);
+      }
+
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: #1a1a3d;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: #00d4ff;
+        border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: #00aaff;
+      }
+
+      .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+      }
+
+      .status-active {
+        background-color: #00ff00;
+        box-shadow: 0 0 10px #00ff00;
+      }
+
+      .status-inactive {
+        background-color: #ff0000;
+        box-shadow: 0 0 10px #ff0000;
+      }
+
+      .notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        background: rgba(26, 26, 61, 0.9);
+        border: 1px solid #00d4ff;
+        border-radius: 5px;
+        box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
+        transform: translateX(120%);
+        transition: transform 0.3s ease-out;
+        z-index: 1000;
+      }
+
+      .notification.show {
+        transform: translateX(0);
+      }
+
+      .progress-container {
+        width: 100%;
+        height: 5px;
+        background: #1a1a3d;
+        margin-top: 10px;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #00d4ff, #00aaff);
+        width: 0%;
+        transition: width 0.3s ease;
+      }
+
+      @media (max-width: 768px) {
+        .flex.space-x-4 {
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+        }
+
+        #webcam {
+          width: 100%;
+          height: auto;
+        }
+      }
+    </style>
+  </head>
+  <body
+    class="flex flex-col items-center justify-center min-h-screen space-y-6 text-gray-200 p-4"
+  >
+    <div class="stars-background"></div>
+
+    <div class="flex flex-col items-center mb-4">
+      <h1 class="text-3xl font-bold text-cyan-400 mb-2">
+        SpaceVision Classifier
+      </h1>
+      <div class="flex items-center">
+        <span id="webcam-status" class="status-indicator status-inactive"></span>
+        <span id="model-status" class="status-indicator status-inactive ml-4"></span>
+      </div>
+      <div class="text-sm mt-1">
+        <span id="webcam-status-text">Webcam: Offline</span>
+        <span id="model-status-text" class="ml-4">Model: Not Loaded</span>
+      </div>
+    </div>
+
+    <div class="relative">
+      <video
+        id="webcam"
+        width="900"
+        height="500"
+        autoplay
+        muted
+        playsinline
+        class="border-4 border-cyan-400 rounded-lg shadow-2xl shadow-cyan-500/50 bg-gray-800 transition-transform duration-300 hover:scale-102"
+      ></video>
+      <div
+        id="capture-indicator"
+        class="absolute inset-0 border-8 border-green-500 opacity-0 pointer-events-none transition-opacity duration-300"
+      ></div>
+    </div>
+
+    <div class="flex flex-wrap justify-center gap-4">
+      <div class="flex space-x-4">
+        <button
+          id="class-a"
+          class="btn-glow px-6 py-3 bg-gradient-to-r from-gray-800 to-gray-700 border-2 border-cyan-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-cyan-500/30 hover:bg-gradient-to-r hover:from-gray-700 hover:to-gray-600 hover:shadow-cyan-500/50 transition-all duration-300"
+        >
+          Capture Class A
+        </button>
+        <button
+          id="class-b"
+          class="btn-glow px-6 py-3 bg-gradient-to-r from-gray-800 to-gray-700 border-2 border-cyan-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-cyan-500/30 hover:bg-gradient-to-r hover:from-gray-700 hover:to-gray-600 hover:shadow-cyan-500/50 transition-all duration-300"
+        >
+          Capture Class B
+        </button>
+        <button
+          id="predict"
+          class="btn-glow px-6 py-3 bg-gradient-to-r from-blue-800 to-blue-700 border-2 border-blue-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-blue-500/30 hover:bg-gradient-to-r hover:from-blue-700 hover:to-blue-600 hover:shadow-blue-500/50 transition-all duration-300"
+        >
+          Predict
+        </button>
+      </div>
+
+      <div class="flex space-x-4">
+        <button
+          id="save-model"
+          class="btn-glow px-6 py-3 bg-gradient-to-r from-purple-800 to-purple-700 border-2 border-purple-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-purple-500/30 hover:bg-gradient-to-r hover:from-purple-700 hover:to-purple-600 hover:shadow-purple-500/50 transition-all duration-300"
+        >
+          Save Model
+        </button>
+        <button
+          id="download-model"
+          class="btn-glow px-6 py-3 bg-gradient-to-r from-green-800 to-green-700 border-2 border-green-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-green-500/30 hover:bg-gradient-to-r hover:from-green-700 hover:to-green-600 hover:shadow-green-500/50 transition-all duration-300"
+        >
+          Download Model
+        </button>
+        <input type="file" id="upload-model" accept=".json" class="hidden" />
+        <button
+          id="load-model"
+          class="btn-glow px-6 py-3 bg-gradient-to-r from-yellow-800 to-yellow-700 border-2 border-yellow-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-yellow-500/30 hover:bg-gradient-to-r hover:from-yellow-700 hover:to-yellow-600 hover:shadow-yellow-500/50 transition-all duration-300"
+        >
+          Load Model
+        </button>
+      </div>
+    </div>
+
+    <div
+      class="w-full max-w-4xl bg-gray-800/80 border border-cyan-400 rounded-lg p-4 shadow-lg shadow-cyan-500/30 mt-4"
+    >
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="text-lg font-bold text-cyan-400">System Status</h2>
+        <div class="text-sm">
+          <span id="class-a-count" class="text-green-400">Class A: 0</span>
+          <span id="class-b-count" class="text-blue-400 ml-4">Class B: 0</span>
+        </div>
+      </div>
+
+      <div id="result" class="text-xl font-bold text-center py-4">
+        Ready for classification...
+      </div>
+
+      <div class="progress-container">
+        <div id="confidence-bar" class="progress-bar"></div>
+      </div>
+    </div>
+
+    <div id="notification" class="notification">
+      <div id="notification-message" class="flex items-center">
+        <span id="notification-icon" class="mr-2">ℹ️</span>
+        <span id="notification-text">Notification message</span>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      const webcam = $("webcam");
+      const webcamStatus = $("webcam-status");
+      const webcamStatusText = $("webcam-status-text");
+      const modelStatus = $("model-status");
+      const modelStatusText = $("model-status-text");
+      const resultDiv = $("result");
+      const confidenceBar = $("confidence-bar");
+      const classACount = $("class-a-count");
+      const classBCount = $("class-b-count");
+      const captureIndicator = $("capture-indicator");
+      const notification = $("notification");
+      const notificationText = $("notification-text");
+      const notificationIcon = $("notification-icon");
+
+      const classifier = knnClassifier.create();
+      let net;
+      let classCounts = { 0: 0, 1: 0 };
+
+      const showNotification = (message, type = "info") => {
+        notificationText.textContent = message;
+        notificationIcon.textContent = {
+          success: "✅",
+          error: "❌",
+          warning: "⚠️",
+          info: "ℹ️",
+        }[type];
+        notification.classList.add("show");
+        setTimeout(() => notification.classList.remove("show"), 3000);
+      };
+
+      const updateClassCounts = () => {
+        classACount.textContent = `Class A: ${classCounts[0]}`;
+        classBCount.textContent = `Class B: ${classCounts[1]}`;
+      };
+
+      const setStatus = (element, textElement, isActive, activeText, inactiveText) => {
+        element.classList.toggle("status-active", isActive);
+        element.classList.toggle("status-inactive", !isActive);
+        textElement.textContent = isActive ? activeText : inactiveText;
+      };
+
+      const showCaptureFeedback = () => {
+        captureIndicator.style.opacity = "0.7";
+        setTimeout(() => (captureIndicator.style.opacity = "0"), 300);
+      };
+
+      const setupWebcam = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "environment" },
+            audio: false,
+          });
+          webcam.srcObject = stream;
+          await new Promise((resolve) => (webcam.onloadedmetadata = resolve));
+          setStatus(webcamStatus, webcamStatusText, true, "Webcam: Online", "");
+        } catch (error) {
+          console.error("Error accessing webcam:", error);
+          showNotification("Could not access webcam. Please check permissions.", "error");
+          setStatus(webcamStatus, webcamStatusText, false, "", "Webcam: Error");
+          throw error;
+        }
+      };
+
+      const serializeDataset = (dataset) => {
+        const obj = {};
+        Object.keys(dataset).forEach((key) => {
+          obj[key] = Array.from(dataset[key].dataSync());
+        });
+        return obj;
+      };
+
+      const deserializeDataset = (obj) => {
+        const tensors = {};
+        Object.keys(obj).forEach((key) => {
+          tensors[key] = tf.tensor(obj[key], [obj[key].length / 1024, 1024]);
+        });
+        return tensors;
+      };
+
+      const saveModel = async () => {
+        try {
+          const dataset = classifier.getClassifierDataset();
+          if (Object.keys(dataset).length === 0) {
+            showNotification("No training data to save!", "warning");
+            return;
+          }
+          localStorage.setItem("knnModel", JSON.stringify(serializeDataset(dataset)));
+          showNotification("Model saved to browser storage!", "success");
+        } catch (error) {
+          console.error("Error saving model:", error);
+          showNotification("Error saving model!", "error");
+        }
+      };
+
+      const loadModel = async (datasetObj) => {
+        try {
+          if (!datasetObj) {
+            showNotification("No model data provided.", "warning");
+            return;
+          }
+          const tensors = deserializeDataset(datasetObj);
+          classifier.setClassifierDataset(tensors);
+          classCounts[0] = tensors[0] ? tensors[0].shape[0] : 0;
+          classCounts[1] = tensors[1] ? tensors[1].shape[0] : 0;
+          updateClassCounts();
+          setStatus(modelStatus, modelStatusText, true, "Model: Loaded", "");
+          showNotification("Model loaded successfully!", "success");
+        } catch (error) {
+          console.error("Error loading model:", error);
+          showNotification("Error loading model!", "error");
+        }
+      };
+
+      const loadModelFromLocalStorage = async () => {
+        const savedModel = localStorage.getItem("knnModel");
+        if (savedModel) {
+          await loadModel(JSON.parse(savedModel));
+        } else {
+          showNotification("No saved model found in browser storage.", "warning");
+        }
+      };
+
+      const downloadModel = () => {
+        try {
+          const dataset = classifier.getClassifierDataset();
+          if (Object.keys(dataset).length === 0) {
+            showNotification("No training data to download!", "warning");
+            return;
+          }
+          const dataStr =
+            "data:text/json;charset=utf-8," +
+            encodeURIComponent(JSON.stringify(serializeDataset(dataset)));
+          const a = document.createElement("a");
+          a.setAttribute("href", dataStr);
+          a.setAttribute("download", `knn_model_${new Date().toISOString().slice(0, 10)}.json`);
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          showNotification("Model downloaded!", "success");
+        } catch (error) {
+          console.error("Error downloading model:", error);
+          showNotification("Error downloading model!", "error");
+        }
+      };
+
+      const handleFileUpload = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => loadModel(JSON.parse(e.target.result));
+        reader.onerror = () => showNotification("Error reading file!", "error");
+        reader.readAsText(file);
+      };
+
+      const addExample = async (classId) => {
+        try {
+          const img = tf.browser.fromPixels(webcam);
+          const activation = net.infer(img, "conv_preds");
+          classifier.addExample(activation, classId);
+          classCounts[classId]++;
+          updateClassCounts();
+          showCaptureFeedback();
+          img.dispose();
+          showNotification(`Added example to Class ${classId === 0 ? "A" : "B"}!`, "success");
+          if (Object.keys(classifier.getClassifierDataset()).length > 0) {
+            setStatus(modelStatus, modelStatusText, true, "Model: Trained", "");
+          }
+        } catch (error) {
+          console.error("Error adding example:", error);
+          showNotification("Error capturing image!", "error");
+        }
+      };
+
+      const predict = async () => {
+        try {
+          if (classifier.getNumClasses() === 0) {
+            showNotification("No training data! Please add examples first.", "warning");
+            return;
+          }
+          const img = tf.browser.fromPixels(webcam);
+          const activation = net.infer(img, "conv_preds");
+          const result = await classifier.predictClass(activation);
+          const confidence = result.confidences[result.label];
+
+          resultDiv.innerHTML = `
+            Prediction: <span class="text-${result.label === "0" ? "green-400" : "blue-400"}">Class ${result.label === "0" ? "A" : "B"}</span>
+            <br>
+            Confidence: ${(confidence * 100).toFixed(1)}%
+          `;
+          confidenceBar.style.width = `${confidence * 100}%`;
+          img.dispose();
+        } catch (error) {
+          console.error("Error during prediction:", error);
+          showNotification("Error during prediction!", "error");
+        }
+      };
+
+      const app = async () => {
+        try {
+          resultDiv.textContent = "Initializing system...";
+          showNotification("Loading AI model...", "info");
+          net = await mobilenet.load();
+          showNotification("Accessing webcam...", "info");
+          await setupWebcam();
+          await loadModelFromLocalStorage();
+
+          $("class-a").addEventListener("click", () => addExample(0));
+          $("class-b").addEventListener("click", () => addExample(1));
+          $("predict").addEventListener("click", predict);
+          $("save-model").addEventListener("click", saveModel);
+          $("download-model").addEventListener("click", downloadModel);
+          $("load-model").addEventListener("click", () => $("upload-model").click());
+          $("upload-model").addEventListener("change", handleFileUpload);
+
+          resultDiv.innerHTML = "Ready for classification! <br> Add examples to train the model.";
+          showNotification("System ready!", "success");
+        } catch (error) {
+          console.error("Initialization error:", error);
+          resultDiv.textContent = "Initialization failed. Please check console for details.";
+          showNotification("Initialization failed!", "error");
+        }
+      };
+
+      app();
+    </script>
+  </body>
+</html>
