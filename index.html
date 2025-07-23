@@ -197,26 +197,38 @@
     <div class="flex flex-wrap justify-center gap-4">
       <div class="flex space-x-4">
         <button
-          id="class-a"
+          id="capture-class-a"
           class="btn-glow px-6 py-3 bg-gradient-to-r from-gray-800 to-gray-700 border-2 border-cyan-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-cyan-500/30 hover:bg-gradient-to-r hover:from-gray-700 hover:to-gray-600 hover:shadow-cyan-500/50 transition-all duration-300"
         >
-          Capture Class A
+          Capture Class A Image
         </button>
         <button
-          id="class-b"
+          id="capture-class-b"
           class="btn-glow px-6 py-3 bg-gradient-to-r from-gray-800 to-gray-700 border-2 border-cyan-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-cyan-500/30 hover:bg-gradient-to-r hover:from-gray-700 hover:to-gray-600 hover:shadow-cyan-500/50 transition-all duration-300"
         >
-          Capture Class B
+          Capture Class B Image
         </button>
         <button
-          id="predict"
-          class="btn-glow px-6 py-3 bg-gradient-to-r from-blue-800 to-blue-700 border-2 border-blue-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-blue-500/30 hover:bg-gradient-to-r hover:from-blue-700 hover:to-blue-600 hover:shadow-blue-500/50 transition-all duration-300"
+          id="process-images"
+          class="btn-glow px-6 py-3 bg-gradient-to-r from-green-800 to-green-700 border-2 border-green-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-green-500/30 hover:bg-gradient-to-r hover:from-green-700 hover:to-green-600 hover:shadow-green-500/50 transition-all duration-300"
         >
-          Predict
+          Process Collected Images
         </button>
       </div>
 
-      <div class="flex space-x-4">
+      <div class="flex space-x-4 mt-4">
+        <button
+          id="start-prediction"
+          class="btn-glow px-6 py-3 bg-gradient-to-r from-blue-800 to-blue-700 border-2 border-blue-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-blue-500/30 hover:bg-gradient-to-r hover:from-blue-700 hover:to-blue-600 hover:shadow-blue-500/50 transition-all duration-300"
+        >
+          Start Real-time Prediction
+        </button>
+        <button
+          id="stop-prediction"
+          class="btn-glow px-6 py-3 bg-gradient-to-r from-red-800 to-red-700 border-2 border-red-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-red-500/30 hover:bg-gradient-to-r hover:from-red-700 hover:to-red-600 hover:shadow-red-500/50 transition-all duration-300"
+        >
+          Stop Prediction
+        </button>
         <button
           id="save-model"
           class="btn-glow px-6 py-3 bg-gradient-to-r from-purple-800 to-purple-700 border-2 border-purple-400 text-gray-200 font-semibold rounded-lg shadow-md shadow-purple-500/30 hover:bg-gradient-to-r hover:from-purple-700 hover:to-purple-600 hover:shadow-purple-500/50 transition-all duration-300"
@@ -247,6 +259,12 @@
         <div class="text-sm">
           <span id="class-a-count" class="text-green-400">Class A: 0</span>
           <span id="class-b-count" class="text-blue-400 ml-4">Class B: 0</span>
+          <span id="captured-a-count" class="text-green-300 ml-4"
+            >Captured A: 0</span
+          >
+          <span id="captured-b-count" class="text-blue-300 ml-4"
+            >Captured B: 0</span
+          >
         </div>
       </div>
 
@@ -278,6 +296,8 @@
       const confidenceBar = $("confidence-bar");
       const classACount = $("class-a-count");
       const classBCount = $("class-b-count");
+      const capturedACount = $("captured-a-count");
+      const capturedBCount = $("captured-b-count");
       const captureIndicator = $("capture-indicator");
       const notification = $("notification");
       const notificationText = $("notification-text");
@@ -286,6 +306,9 @@
       const classifier = knnClassifier.create();
       let net;
       let classCounts = { 0: 0, 1: 0 };
+      let capturedImages = { 0: [], 1: [] };
+      let capturedDisplayCounts = { 0: 0, 1: 0 };
+      let predictionIntervalId = null; // To store the interval ID for stopping real-time prediction
 
       const showNotification = (message, type = "info") => {
         notificationText.textContent = message;
@@ -302,9 +325,17 @@
       const updateClassCounts = () => {
         classACount.textContent = `Class A: ${classCounts[0]}`;
         classBCount.textContent = `Class B: ${classCounts[1]}`;
+        capturedACount.textContent = `Captured A: ${capturedDisplayCounts[0]}`;
+        capturedBCount.textContent = `Captured B: ${capturedDisplayCounts[1]}`;
       };
 
-      const setStatus = (element, textElement, isActive, activeText, inactiveText) => {
+      const setStatus = (
+        element,
+        textElement,
+        isActive,
+        activeText,
+        inactiveText
+      ) => {
         element.classList.toggle("status-active", isActive);
         element.classList.toggle("status-inactive", !isActive);
         textElement.textContent = isActive ? activeText : inactiveText;
@@ -318,7 +349,11 @@
       const setupWebcam = async () => {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "environment" },
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              facingMode: "environment",
+            },
             audio: false,
           });
           webcam.srcObject = stream;
@@ -326,7 +361,10 @@
           setStatus(webcamStatus, webcamStatusText, true, "Webcam: Online", "");
         } catch (error) {
           console.error("Error accessing webcam:", error);
-          showNotification("Could not access webcam. Please check permissions.", "error");
+          showNotification(
+            "Could not access webcam. Please check permissions.",
+            "error"
+          );
           setStatus(webcamStatus, webcamStatusText, false, "", "Webcam: Error");
           throw error;
         }
@@ -379,6 +417,7 @@
         } catch (error) {
           console.error("Error loading model:", error);
           showNotification("Error loading model!", "error");
+          setStatus(modelStatus, modelStatusText, false, "", "Model: Error Loading");
         }
       };
 
@@ -387,7 +426,7 @@
         if (savedModel) {
           await loadModel(JSON.parse(savedModel));
         } else {
-          showNotification("No saved model found in browser storage.", "warning");
+          showNotification("No saved model found in browser storage.", "info");
         }
       };
 
@@ -423,46 +462,150 @@
         reader.readAsText(file);
       };
 
-      const addExample = async (classId) => {
+      const captureImage = (classId) => {
         try {
-          const img = tf.browser.fromPixels(webcam);
-          const activation = net.infer(img, "conv_preds");
-          classifier.addExample(activation, classId);
-          classCounts[classId]++;
+          const canvas = document.createElement("canvas");
+          canvas.width = webcam.videoWidth;
+          canvas.height = webcam.videoHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+
+          const imageData = canvas.toDataURL("image/jpeg");
+          capturedImages[classId].push(imageData);
+          capturedDisplayCounts[classId]++;
           updateClassCounts();
           showCaptureFeedback();
-          img.dispose();
-          showNotification(`Added example to Class ${classId === 0 ? "A" : "B"}!`, "success");
-          if (Object.keys(classifier.getClassifierDataset()).length > 0) {
-            setStatus(modelStatus, modelStatusText, true, "Model: Trained", "");
-          }
+          showNotification(
+            `Captured image for Class ${classId === 0 ? "A" : "B"}!`,
+            "success"
+          );
         } catch (error) {
-          console.error("Error adding example:", error);
+          console.error("Error capturing image:", error);
           showNotification("Error capturing image!", "error");
         }
       };
 
-      const predict = async () => {
-        try {
-          if (classifier.getNumClasses() === 0) {
-            showNotification("No training data! Please add examples first.", "warning");
-            return;
-          }
-          const img = tf.browser.fromPixels(webcam);
-          const activation = net.infer(img, "conv_preds");
-          const result = await classifier.predictClass(activation);
-          const confidence = result.confidences[result.label];
+      const processCollectedImages = async () => {
+        if (capturedImages[0].length === 0 && capturedImages[1].length === 0) {
+          showNotification("No images collected to process!", "warning");
+          return;
+        }
 
-          resultDiv.innerHTML = `
-            Prediction: <span class="text-${result.label === "0" ? "green-400" : "blue-400"}">Class ${result.label === "0" ? "A" : "B"}</span>
-            <br>
-            Confidence: ${(confidence * 100).toFixed(1)}%
-          `;
-          confidenceBar.style.width = `${confidence * 100}%`;
-          img.dispose();
-        } catch (error) {
-          console.error("Error during prediction:", error);
-          showNotification("Error during prediction!", "error");
+        showNotification("Processing collected images...", "info");
+        setStatus(modelStatus, modelStatusText, false, "", "Model: Processing");
+
+        let totalProcessed = 0;
+        const processBatchSize = 5;
+
+        const processBatch = async (classId, startIndex) => {
+          for (
+            let i = startIndex;
+            i < Math.min(startIndex + processBatchSize, capturedImages[classId].length);
+            i++
+          ) {
+            const imgElement = new Image();
+            imgElement.src = capturedImages[classId][i];
+            await new Promise((resolve) => (imgElement.onload = resolve));
+
+            const tfImg = tf.browser.fromPixels(imgElement);
+            if (!net) {
+              showNotification("AI model not loaded. Please refresh.", "error");
+              return;
+            }
+            const activation = net.infer(tfImg, "conv_preds");
+            classifier.addExample(activation, classId);
+            classCounts[classId]++;
+            tfImg.dispose();
+            activation.dispose();
+            totalProcessed++;
+          }
+        };
+
+        for (let i = 0; i < capturedImages[0].length; i += processBatchSize) {
+          await processBatch(0, i);
+          updateClassCounts();
+          await tf.nextFrame();
+        }
+
+        for (let i = 0; i < capturedImages[1].length; i += processBatchSize) {
+          await processBatch(1, i);
+          updateClassCounts();
+          await tf.nextFrame();
+        }
+
+        capturedImages = { 0: [], 1: [] };
+        capturedDisplayCounts = { 0: 0, 1: 0 };
+        updateClassCounts();
+
+        if (classifier.getNumClasses() > 0 && (classifier.getClassifierDataset()[0]?.shape[0] || 0) + (classifier.getClassifierDataset()[1]?.shape[0] || 0) > 0) {
+          setStatus(modelStatus, modelStatusText, true, "Model: Trained", "");
+          showNotification(
+            `Successfully processed ${totalProcessed} images! Model trained.`,
+            "success"
+          );
+        } else {
+          setStatus(modelStatus, modelStatusText, false, "", "Model: Not Trained");
+          showNotification("No examples were added to the model after processing.", "warning");
+        }
+      };
+
+      const predict = async () => {
+        // Only run prediction if webcam is active and model is loaded/trained
+        if (webcam.srcObject && net && classifier.getNumClasses() > 0) {
+          try {
+            const img = tf.browser.fromPixels(webcam);
+            const activation = net.infer(img, "conv_preds");
+            const result = await classifier.predictClass(activation);
+            const confidence = result.confidences[result.label];
+
+            resultDiv.innerHTML = `
+              Prediction: <span class="text-${
+                result.label === "0" ? "green-400" : "blue-400"
+              }">Class ${result.label === "0" ? "A" : "B"}</span>
+              <br>
+              Confidence: ${(confidence * 100).toFixed(1)}%
+            `;
+            confidenceBar.style.width = `${confidence * 100}%`;
+            img.dispose();
+            activation.dispose();
+          } catch (error) {
+            console.error("Error during prediction:", error);
+            resultDiv.textContent = "Prediction error. (Check console)";
+            confidenceBar.style.width = "0%";
+            // Do not show a notification constantly during real-time prediction errors
+          }
+        } else {
+          // If prediction can't run, ensure UI reflects it
+          resultDiv.textContent = "Prediction paused: Model not trained or webcam offline.";
+          confidenceBar.style.width = "0%";
+        }
+      };
+
+      const startPredictionLoop = () => {
+        if (predictionIntervalId) {
+          showNotification("Real-time prediction is already running.", "info");
+          return;
+        }
+        if (!net || classifier.getNumClasses() === 0) {
+            showNotification("Cannot start prediction: Model not loaded or trained.", "warning");
+            return;
+        }
+        predictionIntervalId = setInterval(predict, 200); // Call predict every 200ms
+        showNotification("Real-time prediction started!", "success");
+        $("start-prediction").disabled = true; // Disable start button
+        $("stop-prediction").disabled = false; // Enable stop button
+      };
+
+      const stopPredictionLoop = () => {
+        if (predictionIntervalId) {
+          clearInterval(predictionIntervalId);
+          predictionIntervalId = null;
+          showNotification("Real-time prediction stopped.", "info");
+          resultDiv.textContent = "Real-time prediction stopped.";
+          $("start-prediction").disabled = false; // Enable start button
+          $("stop-prediction").disabled = true; // Disable stop button
+        } else {
+          showNotification("Real-time prediction is not running.", "info");
         }
       };
 
@@ -471,24 +614,36 @@
           resultDiv.textContent = "Initializing system...";
           showNotification("Loading AI model...", "info");
           net = await mobilenet.load();
+          setStatus(modelStatus, modelStatusText, true, "Model: Loaded", "");
           showNotification("Accessing webcam...", "info");
           await setupWebcam();
           await loadModelFromLocalStorage();
 
-          $("class-a").addEventListener("click", () => addExample(0));
-          $("class-b").addEventListener("click", () => addExample(1));
-          $("predict").addEventListener("click", predict);
+          // Event listeners
+          $("capture-class-a").addEventListener("click", () => captureImage(0));
+          $("capture-class-b").addEventListener("click", () => captureImage(1));
+          $("process-images").addEventListener("click", processCollectedImages);
+          // New buttons for starting/stopping prediction
+          $("start-prediction").addEventListener("click", startPredictionLoop);
+          $("stop-prediction").addEventListener("click", stopPredictionLoop);
+          $("stop-prediction").disabled = true; // Initially disable stop button
+
           $("save-model").addEventListener("click", saveModel);
           $("download-model").addEventListener("click", downloadModel);
           $("load-model").addEventListener("click", () => $("upload-model").click());
           $("upload-model").addEventListener("change", handleFileUpload);
 
-          resultDiv.innerHTML = "Ready for classification! <br> Add examples to train the model.";
+          resultDiv.innerHTML =
+            "Ready for classification! <br> Capture images then process to train the model, then start prediction.";
           showNotification("System ready!", "success");
+          updateClassCounts();
         } catch (error) {
           console.error("Initialization error:", error);
-          resultDiv.textContent = "Initialization failed. Please check console for details.";
-          showNotification("Initialization failed!", "error");
+          resultDiv.textContent =
+            "Initialization failed. Please check console for details.";
+          showNotification("Initialization failed! See console.", "error");
+          setStatus(webcamStatus, webcamStatusText, false, "", "Webcam: Error");
+          setStatus(modelStatus, modelStatusText, false, "", "Model: Not Loaded");
         }
       };
 
