@@ -8,7 +8,6 @@
       href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier@1.2.2/dist/knn-classifier.min.js"></script>
@@ -169,8 +168,14 @@
         SpaceVision Classifier
       </h1>
       <div class="flex items-center">
-        <span id="webcam-status" class="status-indicator status-inactive"></span>
-        <span id="model-status" class="status-indicator status-inactive ml-4"></span>
+        <span
+          id="webcam-status"
+          class="status-indicator status-inactive"
+        ></span>
+        <span
+          id="model-status"
+          class="status-indicator status-inactive ml-4"
+        ></span>
       </div>
       <div class="text-sm mt-1">
         <span id="webcam-status-text">Webcam: Offline</span>
@@ -393,7 +398,10 @@
             showNotification("No training data to save!", "warning");
             return;
           }
-          localStorage.setItem("knnModel", JSON.stringify(serializeDataset(dataset)));
+          localStorage.setItem(
+            "knnModel",
+            JSON.stringify(serializeDataset(dataset))
+          );
           showNotification("Model saved to browser storage!", "success");
         } catch (error) {
           console.error("Error saving model:", error);
@@ -417,7 +425,13 @@
         } catch (error) {
           console.error("Error loading model:", error);
           showNotification("Error loading model!", "error");
-          setStatus(modelStatus, modelStatusText, false, "", "Model: Error Loading");
+          setStatus(
+            modelStatus,
+            modelStatusText,
+            false,
+            "",
+            "Model: Error Loading"
+          );
         }
       };
 
@@ -442,7 +456,10 @@
             encodeURIComponent(JSON.stringify(serializeDataset(dataset)));
           const a = document.createElement("a");
           a.setAttribute("href", dataStr);
-          a.setAttribute("download", `knn_model_${new Date().toISOString().slice(0, 10)}.json`);
+          a.setAttribute(
+            "download",
+            `knn_model_${new Date().toISOString().slice(0, 10)}.json`
+          );
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
@@ -500,7 +517,11 @@
         const processBatch = async (classId, startIndex) => {
           for (
             let i = startIndex;
-            i < Math.min(startIndex + processBatchSize, capturedImages[classId].length);
+            i <
+            Math.min(
+              startIndex + processBatchSize,
+              capturedImages[classId].length
+            );
             i++
           ) {
             const imgElement = new Image();
@@ -537,15 +558,29 @@
         capturedDisplayCounts = { 0: 0, 1: 0 };
         updateClassCounts();
 
-        if (classifier.getNumClasses() > 0 && (classifier.getClassifierDataset()[0]?.shape[0] || 0) + (classifier.getClassifierDataset()[1]?.shape[0] || 0) > 0) {
+        if (
+          classifier.getNumClasses() > 0 &&
+          (classifier.getClassifierDataset()[0]?.shape[0] || 0) +
+            (classifier.getClassifierDataset()[1]?.shape[0] || 0) >
+            0
+        ) {
           setStatus(modelStatus, modelStatusText, true, "Model: Trained", "");
           showNotification(
             `Successfully processed ${totalProcessed} images! Model trained.`,
             "success"
           );
         } else {
-          setStatus(modelStatus, modelStatusText, false, "", "Model: Not Trained");
-          showNotification("No examples were added to the model after processing.", "warning");
+          setStatus(
+            modelStatus,
+            modelStatusText,
+            false,
+            "",
+            "Model: Not Trained"
+          );
+          showNotification(
+            "No examples were added to the model after processing.",
+            "warning"
+          );
         }
       };
 
@@ -576,7 +611,8 @@
           }
         } else {
           // If prediction can't run, ensure UI reflects it
-          resultDiv.textContent = "Prediction paused: Model not trained or webcam offline.";
+          resultDiv.textContent =
+            "Prediction paused: Model not trained or webcam offline.";
           confidenceBar.style.width = "0%";
         }
       };
@@ -587,8 +623,11 @@
           return;
         }
         if (!net || classifier.getNumClasses() === 0) {
-            showNotification("Cannot start prediction: Model not loaded or trained.", "warning");
-            return;
+          showNotification(
+            "Cannot start prediction: Model not loaded or trained.",
+            "warning"
+          );
+          return;
         }
         predictionIntervalId = setInterval(predict, 200); // Call predict every 200ms
         showNotification("Real-time prediction started!", "success");
@@ -630,7 +669,9 @@
 
           $("save-model").addEventListener("click", saveModel);
           $("download-model").addEventListener("click", downloadModel);
-          $("load-model").addEventListener("click", () => $("upload-model").click());
+          $("load-model").addEventListener("click", () =>
+            $("upload-model").click()
+          );
           $("upload-model").addEventListener("change", handleFileUpload);
 
           resultDiv.innerHTML =
@@ -643,7 +684,13 @@
             "Initialization failed. Please check console for details.";
           showNotification("Initialization failed! See console.", "error");
           setStatus(webcamStatus, webcamStatusText, false, "", "Webcam: Error");
-          setStatus(modelStatus, modelStatusText, false, "", "Model: Not Loaded");
+          setStatus(
+            modelStatus,
+            modelStatusText,
+            false,
+            "",
+            "Model: Not Loaded"
+          );
         }
       };
 
